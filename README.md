@@ -13,7 +13,6 @@ The DAG performs the following main operations:
 1. Retrieves a list of all DAGs in the Airflow environment.
 2. For each DAG:
    - Extracts metadata (ID, description, schedule, etc.)
-   - Retrieves task information
    - Creates or updates an entry in the Dataplex Catalog
 
 ## Prerequisites
@@ -28,28 +27,35 @@ Before running the DAG, ensure the following variables are set in your Airflow e
 
 - `project_id`: Your Google Cloud Project ID
 - `location`: The location of your Dataplex Catalog (e.g., "us-central1")
+- `entry_group_id`: The ID of the Dataplex entry group
+- `entry_type`: The type of entry (e.g., "airflow-dag")
+- `aspect_type`: The aspect type for DAG metadata
 
 ## DAG Structure
 
 The DAG consists of the following main components:
 
-1. `get_dags_list`: Retrieves the list of all DAGs
-2. `process_dag`: A task group that processes each DAG
-   - `extract_dag_info`: Extracts metadata for a specific DAG
-   - `get_tasks`: Retrieves task information for the DAG
-   - `update_dataplex`: Updates or creates an entry in Dataplex Catalog
+1. `export_dags_to_dataplex`: A PythonOperator that processes all DAGs
+   - `create_entry`: Function to create or update an entry in Dataplex Catalog
+   - `export_dags_to_dataplex`: Function to iterate through all DAGs and create entries
 
 ## Usage
 
 Once the DAG is added to your Airflow environment and the necessary configurations are set, it will run according to the specified schedule (default is daily at 00:00).
+
+## Key Features
+
+- Automatic extraction of DAG metadata including ID, description, schedule, and owner
+- Creation and updating of Dataplex Catalog entries for each DAG
+- Error handling and logging for better troubleshooting
 
 ## Customization
 
 You can modify the DAG to fit your specific needs:
 
 - Adjust the schedule interval in the DAG definition
-- Modify the metadata extraction logic in `extract_dag_info`
-- Customize the Dataplex entry creation in `update_dataplex`
+- Modify the metadata extraction logic in the `create_entry` function
+- Customize the Dataplex entry creation in the `create_entry` function
 
 ## Troubleshooting
 
