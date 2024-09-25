@@ -20,6 +20,7 @@ from airflow.utils.dates import days_ago
 from airflow.models import DagBag, DAG
 from google.cloud import dataplex_v1
 from google.protobuf import struct_pb2
+from google.protobuf import field_mask_pb2
 import logging
 
 # Set up logger
@@ -89,6 +90,94 @@ def create_entry(project_id: str, location: str, entry_group_id: str, entry_id: 
         logger.error(f"Error creating entry for DAG {entry_id}: {str(e)}")
         raise
 
+def update_entry(project_id: str, location: str, entry_group_id: str, entry_id: str, entry_type: str, display_name: str, dag_id: str, dag: DAG, aspect_type: str):
+    """
+    Create an Entry in Dataplex API using the dataplex_v1 client.
+
+    Args:
+        project_id (str): The Google Cloud project ID.
+        location (str): The location of the Dataplex resource.
+        entry_group_id (str): The ID of the entry group to create the entry in.
+        entry_id (str): The ID of the entry to create.
+        entry_type (str): The type of the entry.
+        display_name (str): The display name of the entry.
+        dag_id (str): The ID of the DAG.
+        dag (DAG): The Airflow DAG object.
+
+    Raises:
+        Exception: If there's an error creating the entry.
+    """
+    logger.info(f"Creating entry for DAG: {entry_id}")
+    client = dataplex_v1.CatalogServiceClient()
+    parent = client.entry_group_path(project_id, location, entry_group_id)
+    logger.debug(f"Parent path: {parent}")
+
+    # Create the entry object
+    entry = dataplex_v1.Entry()
+    entry.entry_type = f"projects/{project_id}/locations/{location}/entryTypes/{entry_type}"
+    entry.name = f"projects/{project_id}/locations/{location}/entryGroups/{entry_group_id}/entries/{entry_id}"
+
+    # Create the aspect object with DAG metadata
+    aspect = dataplex_v1.Aspect()
+    aspect.aspect_type = aspect_type
+    #aspect.aspect_type = f"""projects/{project_id}/locations/{location}/aspectTypes/{aspect_type}"""
+    aspect_content = {
+        "dag-id": dag.dag_id,
+        "description": dag.dag_display_name,
+        "schedule": str(dag.schedule_interval),
+        "start-date": str(dag.start_date),
+        "end-date": str(dag.end_date),
+        "owner": dag.owner
+    }
+    data_struct = struct_pb2.Struct()
+    data_struct.update(aspect_content)
+    aspect.data = data_struct
+    entry.aspects[f"{project_id}.{location}.{aspect.aspect_type}"] = aspect
+
+    # Create the entry request
+    request = dataplex_v1.UpdateEntryRequest(
+        update_mask=field_mask_pb2.FieldMask(paths=["aspects"]),
+        entry=entry,
+    )
+
+    try:
+        operation = client.update_entry(request=request)
+        logger.info(f"Successfully updated entry for DAG: {entry_id}")
+        logger.debug(f"Operation details: {operation}")
+    except Exception as e:
+        logger.error(f"Error updating entry for DAG {entry_id}: {str(e)}")
+        raise
+
+def check_if_entry_exists(project_id: str, location: str, entry_group_id: str, entry_id: str, entry_type: str):
+    """
+    Check if an entry exists in Dataplex API using the dataplex_v1 client.
+
+    Args:
+        project_id (str): The Google Cloud project ID.
+        location (str): The location of the Dataplex resource.
+        entry_group_id (str): The ID of the entry group to check for the entry.
+        entry_id (str): The ID of the entry to check for.
+        entry_type (str): The type of the entry.
+
+    Returns:
+        bool: True if the entry exists, False otherwise.
+    """
+    client = dataplex_v1.CatalogServiceClient()
+    parent = client.entry_group_path(project_id, location, entry_group_id)
+    entry_name = f"projects/{project_id}/locations/{location}/entryGroups/{entry_group_id}/entries/{entry_id}"
+
+    request = dataplex_v1.GetEntryRequest(name=entry_name)
+    try:
+        entry = client.get_entry(request=request)
+    except Exception as e:
+        logger.error(f"Error checking if entry exists for DAG {entry_id}: {str(e)}")
+        raise
+    # This line checks if the entry exists in Dataplex
+    # It returns True if the entry is found (not None), and False otherwise
+    return entry is not None
+
+
+
 def export_dags_to_dataplex(**kwargs):
     """
     Export all DAGs in the Airflow environment to Dataplex.
@@ -106,21 +195,39 @@ def export_dags_to_dataplex(**kwargs):
 
     for dag_id, dag in dag_bag.dags.items():
         logger.info(f"Processing DAG: {dag_id}")
-
-        try:
-            create_entry(
-                project_id=project_id,
-                location=location,
-                entry_group_id=entry_group_id,
-                entry_id=dag_id,
-                entry_type=entry_type,
-                display_name=dag.description or f"Airflow DAG: {dag_id}",
-                dag_id=dag_id,
-                dag=dag,
-                aspect_type=aspect_type
-            )
-        except Exception as e:
-            logger.error(f"Failed to create entry for DAG {dag_id}: {str(e)}")
+        entry_exists = check_if_entry_exists(project_id, location, entry_group_id, dag_id, entry_type)
+        logger.info(f"Entry for DAG {dag_id} already exists in Dataplex")
+        if entry_exists:
+            try:
+    
+                update_entry(
+                    project_id=project_id,
+                    location=location,
+                    entry_group_id=entry_group_id,
+                    entry_id=dag_id,
+                    entry_type=entry_type,
+                    display_name=dag.description or f"Airflow DAG: {dag_id}",
+                    dag_id=dag_id,
+                    dag=dag,
+                    aspect_type=aspect_type
+                )
+            except Exception as e:
+                logger.error(f"Failed to update entry for DAG {dag_id}: {str(e)}")
+        else:
+            try:
+                create_entry(
+                    project_id=project_id,
+                    location=location,
+                    entry_group_id=entry_group_id,
+                    entry_id=dag_id,
+                    entry_type=entry_type,
+                    display_name=dag.description or f"Airflow DAG: {dag_id}",
+                    dag_id=dag_id,
+                    dag=dag,
+                    aspect_type=aspect_type
+                )
+            except Exception as e:
+                logger.error(f"Failed to create entry for DAG {dag_id}: {str(e)}")
 
     logger.info("Finished exporting DAGs to Dataplex")
 
