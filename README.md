@@ -41,6 +41,7 @@ The DAG consists of the following main components:
 
 ## Usage
 
+Please set up first Dataplex Entry Type, Entry Group and Aspect Type using create_aspect_type.py. 
 Once the DAG is added to your Airflow environment and the necessary configurations are set, it will run according to the specified schedule (default is daily at 00:00).
 
 ## Key Features
