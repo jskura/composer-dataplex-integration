@@ -23,7 +23,7 @@ The DAG performs the following main operations:
 
 ## Configuration
 
-Before running the DAG, ensure the following variables are set in your Airflow environment:
+Before running the DAG, ensure the following variables are set in your DAG:
 
 - `project_id`: Your Google Cloud Project ID
 - `location`: The location of your Dataplex Catalog (e.g., "us-central1")
