@@ -26,7 +26,7 @@ import logging
 # Set up logger
 logger = logging.getLogger(__name__)
 
-project_id = "my-project-id"
+project_id = "jsk-dataplex-demo-380508"
 location = "us-central1"
 entry_group_id = "composer-dag-test"
 entry_type = "airflow-dag"
@@ -165,13 +165,13 @@ def check_if_entry_exists(project_id: str, location: str, entry_group_id: str, e
     client = dataplex_v1.CatalogServiceClient()
     parent = client.entry_group_path(project_id, location, entry_group_id)
     entry_name = f"projects/{project_id}/locations/{location}/entryGroups/{entry_group_id}/entries/{entry_id}"
-
+    entry=None
     request = dataplex_v1.GetEntryRequest(name=entry_name)
     try:
         entry = client.get_entry(request=request)
     except Exception as e:
-        logger.error(f"Error checking if entry exists for DAG {entry_id}: {str(e)}")
-        raise
+        logger.error(f"Error checking if entry exists for DAG {entry_id}: {str(e)}, Probably not exists")
+    
     # This line checks if the entry exists in Dataplex
     # It returns True if the entry is found (not None), and False otherwise
     return entry is not None
@@ -213,6 +213,7 @@ def export_dags_to_dataplex(**kwargs):
                 )
             except Exception as e:
                 logger.error(f"Failed to update entry for DAG {dag_id}: {str(e)}")
+                raise
         else:
             try:
                 create_entry(
@@ -228,6 +229,7 @@ def export_dags_to_dataplex(**kwargs):
                 )
             except Exception as e:
                 logger.error(f"Failed to create entry for DAG {dag_id}: {str(e)}")
+                raise
 
     logger.info("Finished exporting DAGs to Dataplex")
 
